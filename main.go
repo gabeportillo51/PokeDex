@@ -1,5 +1,5 @@
 package main
-import ("fmt"; "strings"; "bufio"; "os"; "net/http"; "encoding/json"; 
+import ("fmt"; "strings"; "bufio"; "os"; "net/http"; "encoding/json"; "math/rand"; 
 "errors"; "time"; "github.com/gabeportillo51/PokeDex/internal/pokecache"; "io"; "bytes")
 
 func cleanInput(text string) []string{
@@ -145,7 +145,7 @@ func commandExplore(loc *config, area_name string) error {
     	poke_cache.Add(url, byteData)
 	}
 	fmt.Println("")
-	fmt.Printf("Exploring %s .....\n", area_name)
+	fmt.Printf("Exploring %s...\n", area_name)
 	reader = bytes.NewReader(byteData)
 	decoder := json.NewDecoder(reader)
 	var area_pokemon areaPokemon
@@ -155,6 +155,43 @@ func commandExplore(loc *config, area_name string) error {
 	fmt.Println("")
 	for _, p := range area_pokemon.PokemonEncounters {
 		fmt.Println(p.Pokemon.Name)
+	}
+	fmt.Println()
+	return nil
+}
+
+func commandCatch(loc *config, pokemon_name string) error {
+	if pokemon_name == "" {
+		return errors.New("You didn't specify which Pokemon you want to catch. Try Again.")
+	}
+	url := fmt.Sprintf("https://pokeapi.co/api/v2/pokemon/%s", pokemon_name)
+	var reader *bytes.Reader
+	var byteData []byte
+    response, err := http.Get(url)
+    if err != nil {
+        return err
+    }
+    defer response.Body.Close()
+    byteData, err = io.ReadAll(response.Body)
+    if err != nil {
+        return err
+    }
+	fmt.Println("")
+	fmt.Printf("Throwing a Pokeball at %s...\n", pokemon_name)
+	reader = bytes.NewReader(byteData)
+	decoder := json.NewDecoder(reader)
+	var pok pokemonCatch
+	if err := decoder.Decode(&pok); err != nil {
+    	return err
+	}
+	catchProbability := 100 - (pok.BaseExperience / 3)
+	randomNumber := rand.Intn(100)
+	fmt.Printf("Pokemon's base experience: %d\n", pok.BaseExperience) 
+	if randomNumber < catchProbability {
+		fmt.Printf("%s was caught!", pokemon_name)
+		UserPokeDex[pokemon_name] = pok
+	} else {
+		fmt.Printf("%s escaped!", pokemon_name)
 	}
 	fmt.Println()
 	return nil
@@ -196,11 +233,18 @@ type areaPokemon struct {
 	} `json:"pokemon_encounters"`
 }
 
+type pokemonCatch struct{
+	Name string `json:"name"`
+	BaseExperience int `json:"base_experience"`
+}
+
 var commandRegistry map[string]cliCommand
 var poke_cache *pokecache.Cache
 var area locationArea
+var UserPokeDex map[string]pokemonCatch
 
 func main(){
+	UserPokeDex = map[string]pokemonCatch{}
 	poke_cache = pokecache.NewCache(5 * time.Second)
 	commandRegistry = map[string]cliCommand {
 		"help": {
@@ -228,7 +272,13 @@ func main(){
 			description: "Show all Pokemon in the specified area that are available to catch",
 			callback: commandExplore,
 		},
+		"catch": {
+			name: "catch",
+			description: "Attempt to catch specified Pokemon using a pokeball",
+			callback: commandCatch,
+		},
 	}
+
 	beginning := "https://pokeapi.co/api/v2/location-area/"
 	location := config{
 	Next: &beginning,
@@ -236,7 +286,9 @@ func main(){
 	Current: nil,
 	Page_number: 0,
 	}
+
 	scanner := bufio.NewScanner(os.Stdin)
+
 	for {                           
 		fmt.Print("PokeDex > ")
 		scanner.Scan()                           
