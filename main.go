@@ -40,13 +40,7 @@ func commandMap(loc *config, param string) error {
 	var reader *bytes.Reader
 	var byteData []byte
 	byteData, ok := poke_cache.Get(*loc.Next)
-	if ok {
-		fmt.Println()
-		fmt.Println("Data found in Cache....Super Speed!")
-	}
 	if !ok {
-		fmt.Println()
-		fmt.Println("Data not in Cache. Getting it...")
     	response, err := http.Get(*loc.Next)
     	if err != nil {
         	return err
@@ -83,13 +77,7 @@ func commandMapB(loc *config, param string) error {
 	var reader *bytes.Reader
 	var byteData []byte
 	byteData, ok := poke_cache.Get(*loc.Previous)
-	if ok {
-		fmt.Println()
-		fmt.Println("Data found in Cache....Super Speed!")
-	}
 	if !ok {
-		fmt.Println()
-		fmt.Println("Data not in Cache. Getting it...")
     	response, err := http.Get(*loc.Previous)
     	if err != nil {
         	return err
@@ -128,11 +116,9 @@ func commandExplore(loc *config, area_name string) error {
 	byteData, ok := poke_cache.Get(url)
 	if ok {
 		fmt.Println("")
-		fmt.Println("Data found in Cache....Super Speed!")
 	}
 	if !ok {
 		fmt.Println("")
-		fmt.Println("Data not in Cache. Getting it...")
     	response, err := http.Get(url)
     	if err != nil {
         	return err
@@ -180,18 +166,55 @@ func commandCatch(loc *config, pokemon_name string) error {
 	fmt.Printf("Throwing a Pokeball at %s...\n", pokemon_name)
 	reader = bytes.NewReader(byteData)
 	decoder := json.NewDecoder(reader)
-	var pok pokemonCatch
-	if err := decoder.Decode(&pok); err != nil {
+	var pokemon Pokemon
+	if err := decoder.Decode(&pokemon); err != nil {
     	return err
 	}
-	catchProbability := 100 - (pok.BaseExperience / 3)
+	catchProbability := 100 - (pokemon.BaseExperience / 3)
 	randomNumber := rand.Intn(100)
-	fmt.Printf("Pokemon's base experience: %d\n", pok.BaseExperience) 
 	if randomNumber < catchProbability {
-		fmt.Printf("%s was caught!", pokemon_name)
-		UserPokeDex[pokemon_name] = pok
+		fmt.Printf("%s was caught!\n", pokemon_name)
+		UserPokeDex[pokemon_name] = pokemon
+		fmt.Println("You may now inspect it with the 'inspect' command.")
 	} else {
 		fmt.Printf("%s escaped!", pokemon_name)
+	}
+	fmt.Println()
+	return nil
+}
+
+func commandInspect(loc *config, pokemon_name string) error {
+	if pokemon_name == "" {
+		return errors.New("You didn't specify a pokemon name. Try Again.")
+	}
+	pokemon_data, ok := UserPokeDex[pokemon_name]
+	if !ok {
+		return errors.New("You don't have a Pokemon by that name.")
+	}
+	fmt.Println()
+	fmt.Printf("Name: %s\n", pokemon_data.Name)
+	fmt.Printf("Height: %d\n", pokemon_data.Height)
+	fmt.Printf("Weight: %d\n", pokemon_data.Weight)
+	fmt.Println("Stats:")
+	for _, stat := range pokemon_data.Stats {
+		fmt.Printf("  -%s: %d\n", stat.Stat.Name, stat.BaseStat)
+	}
+	fmt.Println("Types:")
+	for _, t := range pokemon_data.Types {
+		fmt.Printf("  -%s\n", t.Type.Name)
+	}
+	fmt.Println()
+	return nil
+}
+
+func commandPokedex(loc *config, param string) error {
+	if len(UserPokeDex) == 0 {
+		return errors.New("Your PokeDex is empty!")
+	}
+	fmt.Println()
+	fmt.Println("Your Pokedex:")
+	for _, pokemon := range UserPokeDex {
+		fmt.Printf("  -%s\n", pokemon.Name)
 	}
 	fmt.Println()
 	return nil
@@ -233,49 +256,73 @@ type areaPokemon struct {
 	} `json:"pokemon_encounters"`
 }
 
-type pokemonCatch struct{
+type Pokemon struct{
 	Name string `json:"name"`
 	BaseExperience int `json:"base_experience"`
+	Height int `json:"height"`
+	Weight int `json:"weight"`
+	Stats []struct {
+		BaseStat int `json:"base_stat"`
+		Stat     struct {
+			Name string `json:"name"`
+		} `json:"stat"`
+	} `json:"stats"`
+	Types []struct {
+		Type struct {
+			Name string `json:"name"`
+		} `json:"type"`
+	} `json:"types"`
+
 }
 
 var commandRegistry map[string]cliCommand
 var poke_cache *pokecache.Cache
 var area locationArea
-var UserPokeDex map[string]pokemonCatch
+var UserPokeDex map[string]Pokemon
 
 func main(){
-	UserPokeDex = map[string]pokemonCatch{}
+	UserPokeDex = map[string]Pokemon{}
 	poke_cache = pokecache.NewCache(5 * time.Second)
 	commandRegistry = map[string]cliCommand {
 		"help": {
 			name: "help",
-			description: "How to use the Pokedex",
+			description: "How to use the Pokedex.",
 			callback: commandHelp,
 		},
 		"exit": {
 			name: "exit",
-			description: "Exit the PokeDex",
+			description: "Exit the PokeDex.",
 			callback: commandExit,
 		},
 		"map": {
 			name: "map",
-			description: "Display the next 20 areas",
+			description: "Display the next 20 areas.",
 			callback: commandMap,
 		},
 		"mapb": {
 			name: "mapb",
-			description: "Display the previous 20 areas",
+			description: "Display the previous 20 areas.",
 			callback: commandMapB,
 		},
 		"explore": {
 			name: "explore",
-			description: "Show all Pokemon in the specified area that are available to catch",
+			description: "Show all Pokemon in the specified area that are available to catch.",
 			callback: commandExplore,
 		},
 		"catch": {
 			name: "catch",
-			description: "Attempt to catch specified Pokemon using a pokeball",
+			description: "Attempt to catch specified Pokemon using a pokeball.",
 			callback: commandCatch,
+		},
+		"inspect": {
+			name: "inspect",
+			description: "Examine specified Pokemon to learn more about it.",
+			callback: commandInspect,
+		},
+		"pokedex": {
+			name: "pokedex",
+			description: "View all of the Pokemon in your PokeDex.",
+			callback: commandPokedex,
 		},
 	}
 
